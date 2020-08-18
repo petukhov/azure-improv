@@ -28,7 +28,7 @@ function sourceCode() {
         return temp.content.firstElementChild;
     }
 
-    function getContainersData() {
+    function getContainersDataFromDom() {
         const containers = document.querySelectorAll(
             'table.repos-pr-list > tbody > a > td:nth-of-type(3) > .bolt-table-cell-content'
         );
@@ -73,7 +73,7 @@ function sourceCode() {
     }
 
     function renderAllIndicators() {         
-        for (let data of getContainersData()) {
+        for (let data of getContainersDataFromDom()) {
             renderIndicator(data.container, data.prNum);
         }
     }
@@ -82,6 +82,7 @@ function sourceCode() {
         if (tableObserver) {
             tableObserver.disconnect();
         }
+        renderAllIndicators();
         tableObserver = new MutationObserver(function azureImprovObserve(mutationsList) {
             for (let mut of mutationsList) {
                 const addedNodes = Array.from(mut.addedNodes);
@@ -90,8 +91,10 @@ function sourceCode() {
                 }
                 const node = addedNodes[0];
                 if (node.classList.contains('repos-pr-list')) {
+                    // "repos-pr-list" is a table that contains all the prs in a section
                     renderAllIndicators();
                 } else if (node.getAttribute('href')) {
+                    // handling scrolling
                     const prNum = getPrNum(node);
                     const container = node.querySelector('.bolt-table-cell-content.flex-column');
                     renderIndicator(container, prNum);
@@ -99,7 +102,7 @@ function sourceCode() {
             }
         });
         const el = document.querySelector('.page-content');
-        tableObserver.observe(el, {subtree: true, childList: true});
+        tableObserver.observe(el, { subtree: true, childList: true });
     }
 
     function handleData(data) {
@@ -118,9 +121,6 @@ function sourceCode() {
 
 
     function shouldHandle(reqData, response) {
-        // if (!location.href.includes('/pullrequests')) {
-        //     return false;
-        // }
         const url = reqData instanceof Response ? reqData.url : reqData;
         const contentType = response.headers.get('content-type');
         const isUrlMatching = url?.includes('Contribution/HierarchyQuery/project') || url?.includes('pullrequests?__rt=fps&__ver=2');
