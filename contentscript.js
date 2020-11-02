@@ -50,7 +50,7 @@ function sourceCode() {
     }
 
     function getDiffDays(laterDate, earlierDate) {
-        const oneDay = 24 * 60 * 60 * 1000; // hours*minutes*seconds*milliseconds
+        const oneDay = 24 * 60 * 60 * 1000; // hours * minutes * seconds * milliseconds
         return Math.round(Math.abs((laterDate - earlierDate) / oneDay));
     }
 
@@ -105,7 +105,7 @@ function sourceCode() {
         tableObserver.observe(el, { subtree: true, childList: true });
     }
 
-    function handleData(data) {
+    function handlePrData(data) {
         let prs = data?.fps?.dataProviders?.data["ms.vss-code-web.prs-list-data-provider"]?.pullRequests;
         if (prs && Object.keys(prs).length) {
             prData = { ...prs, ...prData };
@@ -120,7 +120,7 @@ function sourceCode() {
     }
 
 
-    function shouldHandle(reqData, response) {
+    function shouldHandlePrData(reqData, response) {
         const url = reqData instanceof Response ? reqData.url : reqData;
         const contentType = response.headers.get('content-type');
         const isUrlMatching = url?.includes('Contribution/HierarchyQuery/project') || url?.includes('pullrequests?__rt=fps&__ver=2');
@@ -131,14 +131,70 @@ function sourceCode() {
     oldfetch = window.fetch;
     window.fetch = function(...args) {    
         const prom = oldfetch.call(window, ...args).then((res) => {
-            if (shouldHandle(args[0], res)) {
+            if (shouldHandlePrData(args[0], res)) {
                 const clone = res.clone();
-                clone.json().then(data => handleData(data));
+                clone.json().then(data => handlePrData(data));
             }
             return res;
         });
         return prom;
     }
+
+    /** Backlog Effort Indicator Implementation */
+
+    let effortEl, gridObj;
+
+    function monkeyPatchResultGrid() {
+        const gridDefId = 'WorkItemTracking/Scripts/Controls/Query/QueryResultGrid';
+        window.LWLS.require([gridDefId], function(obj) {
+            const resultGridProto = obj.QueryResultGrid.prototype;
+            const orig = resultGridProto._createFilterManager;
+            resultGridProto._createFilterManager = function() {
+                gridObj = this;
+                return orig.apply(this);
+            };
+        });
+    }
+
+    function getFilteredRowsTotalEffort() {
+        const effortCol = gridObj._pageColumns.findIndex(col => col === 'Microsoft.VSTS.Scheduling.Effort');
+        const ids = gridObj._filterManager.filter();
+        const pageData = gridObj._pageData;
+        return ids.reduce((acc, id) => acc + (+pageData[id][effortCol]), 0);
+    }
+
+    const backlogElObserver = new MutationObserver((mutationsList) => {
+        if (document.body.contains(effortEl) && !mutationsList.some(mut => mut.target.classList.contains('grid-header'))) {
+            return;
+        }
+        console.count('updating filter header!!')
+        effortEl = $('div.grid-header > div.grid-header-canvas [aria-label="Effort"] > div.title')[0];
+        if (effortEl) {
+            effortEl.textContent = 'Effort = ' + getFilteredRowsTotalEffort();
+        }
+    });
+
+    const oldLog = console.log;
+    console.log = function(...args) {
+        if (typeof args[0] === 'string' && args[0].includes('Sprints.BacklogOpen')) {
+            const backlogEl = $('.productbacklog-grid-results.grid.backlog.has-header')[0];
+            backlogElObserver.disconnect();
+            backlogElObserver.observe(backlogEl, { childList: true, subtree: true });
+        }
+        oldLog.apply(console, args);
+    };
+
+    const observer2 = new MutationObserver((mutationsList) => {
+        const addedNodes = [...mutationsList].map(m => [...m.addedNodes]).flat();
+        for (const n of addedNodes) {
+            if (n.className === 'external-hub-shim-container flex absolute-fill') {
+                monkeyPatchResultGrid();
+                observer2.disconnect();
+                return;
+            }
+        }
+    });
+    observer2.observe(document.documentElement, { childList: true, subtree: true });
 }
 
 const observer = new MutationObserver(() => {
