@@ -79,11 +79,17 @@ function sourceCode() {
     }
 
     function processPRs() {
+        if (!location.href.includes('/pullrequests?_a=mine')) {
+            return;
+        }
         if (tableObserver) {
             tableObserver.disconnect();
         }
         renderAllIndicators();
         tableObserver = new MutationObserver(function azureImprovObserve(mutationsList) {
+            if (!location.href.includes('/pullrequests?_a=mine')) {
+                return;
+            }
             for (let mut of mutationsList) {
                 const addedNodes = Array.from(mut.addedNodes);
                 if (!addedNodes.length) {
@@ -112,11 +118,10 @@ function sourceCode() {
             return;
         }
         prs = data?.dataProviders?.['ms.vss-code-web.prs-list-data-provider']?.pullRequests;
-        if (prs && Object.keys(prs).length) {
-            prData = { ...prs, ...getStaticPrsData(), ...prData};
-            // at this moment we've got all the data and can process and render the indicators
-            processPRs();
-        } 
+        const newPrData = { ...prs, ...getStaticPrsData(), ...prData};
+        prData = newPrData;
+        // at this moment we've got all the data and can process and render the indicators
+        processPRs();
     }
 
 
